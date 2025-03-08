@@ -24,6 +24,6 @@ public class HomingMissile : MonoBehaviour
 
         float rotateAmount = Vector3.Cross(direction, transform.right).z;
         rb.angularVelocity = -rotateAmount * rotationSpeed;
-        rb.velocity = transform.right * speed;
+        rb.linearVelocity = transform.right * speed;
     }
 }

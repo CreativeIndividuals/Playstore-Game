@@ -1,10 +1,18 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using System;
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager instance { get; private set; }
+
+    // Add the GameState enum definition
+    public enum GameState 
+    {
+        Menu,
+        Playing,
+        Paused,
+        GameOver
+    }
 
     [Header("Session Info")]
     public string currentUserLogin = "QAD6675";

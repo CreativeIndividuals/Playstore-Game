@@ -33,7 +33,7 @@ public class ShootingEnemy : EnemyBase
                     ? (FindObjectOfType<PlayerController>().transform.position - transform.position).normalized 
                     : Vector2.left;
                 
-                rb.velocity = direction * projectileSpeed;
+                rb.linearVelocity = direction * projectileSpeed;
             }
 
             Destroy(projectile, 5f);

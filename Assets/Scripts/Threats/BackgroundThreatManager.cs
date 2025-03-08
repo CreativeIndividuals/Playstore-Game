@@ -65,7 +65,7 @@ public class BackgroundThreatManager : MonoBehaviour
             Rigidbody2D rb = threatObj.GetComponent<Rigidbody2D>();
             if (rb != null)
             {
-                rb.velocity = Vector2.left * speed;
+                rb.linearVelocity = Vector2.left * speed;
             }
         }
 
