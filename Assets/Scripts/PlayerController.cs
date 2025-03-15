@@ -1,3 +1,4 @@
+// Save as: Assets/Scripts/PlayerController.cs
 using UnityEngine;
 
 public class PlayerController : MonoBehaviour
@@ -13,28 +14,35 @@ public class PlayerController : MonoBehaviour
     [Header("References")]
     public GameObject playerSprite;
     public ParticleSystem deathEffect;
+
+    [Header("Health")]
+    [SerializeField] private float maxHealth = 100f;
+    private float currentHealth;
     
     private Vector3 velocity = Vector3.zero;
     private Vector2 targetPosition;
     private bool isDead = false;
     private Camera mainCamera;
+    private GameManager gameManager;
 
     private void Start()
     {
         mainCamera = Camera.main;
         targetPosition = transform.position;
+        currentHealth = maxHealth;
         
-        if (GameManager.instance != null)
+        gameManager = GameManager.instance;
+        if (gameManager != null)
         {
-            GameManager.instance.OnGameStateChanged += HandleGameStateChanged;
+            gameManager.OnGameStateChanged += HandleGameStateChanged;
         }
     }
 
     private void OnDestroy()
     {
-        if (GameManager.instance != null)
+        if (gameManager != null)
         {
-            GameManager.instance.OnGameStateChanged -= HandleGameStateChanged;
+            gameManager.OnGameStateChanged -= HandleGameStateChanged;
         }
     }
 
@@ -75,6 +83,18 @@ public class PlayerController : MonoBehaviour
         );
     }
 
+    public void TakeDamage(float damage)
+    {
+        if (isDead) return;
+
+        currentHealth -= damage;
+        
+        if (currentHealth <= 0)
+        {
+            Die();
+        }
+    }
+
     private void HandleGameStateChanged(GameManager.GameState newState)
     {
         if (newState == GameManager.GameState.GameOver)
@@ -105,6 +125,9 @@ public class PlayerController : MonoBehaviour
             deathEffect.Play();
         }
 
-        GameManager.instance.GameOver();
+        if (gameManager != null)
+        {
+            gameManager.GameOver();
+        }
     }
 }
