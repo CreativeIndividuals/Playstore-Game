@@ -1,199 +1,376 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.Audio;
-using TMPro;
+using System.Collections;
 
 public class SettingsTabContent : TabContent
 {
-    // Delegates for callbacks
-    public delegate void AudioSettingChanged(float value);
-    public delegate void ToggleSettingChanged(bool value);
-    public delegate void QualitySettingChanged(int value);
-    public delegate void AuthenticationAction();
-
-    // Events
-    public event AudioSettingChanged OnMusicVolumeChanged;
-    public event AudioSettingChanged OnSfxVolumeChanged;
-    public event ToggleSettingChanged OnMusicMuteChanged;
-    public event ToggleSettingChanged OnSfxMuteChanged;
-    public event ToggleSettingChanged OnVibrationChanged;
-    public event ToggleSettingChanged OnPowerSavingChanged;
-    public event QualitySettingChanged OnQualityChanged;
-    public event AuthenticationAction OnSignInRequested;
-    public event AuthenticationAction OnSignOutRequested;
-
     [Header("Audio Settings")]
-    [SerializeField] private Slider _musicVolumeSlider;
-    [SerializeField] private Slider _sfxVolumeSlider;
-    [SerializeField] private Toggle _muteMusicToggle;
-    [SerializeField] private Toggle _muteSfxToggle;
-    [SerializeField] private AudioMixer _audioMixer;
-
+    [SerializeField] private Slider musicSlider;
+    [SerializeField] private Slider sfxSlider;
+    [SerializeField] private Toggle muteToggle;
+    [SerializeField] private AudioSource audioSource; // For testing sounds
+    [SerializeField] private AudioClip testSound;
+    
     [Header("Graphics Settings")]
-    [SerializeField] private TMP_Dropdown _qualityDropdown;
-    [SerializeField] private Toggle _vibrationToggle;
-    [SerializeField] private Toggle _powerSavingToggle;
+    [SerializeField] private Dropdown qualityDropdown;
+    [SerializeField] private Toggle fullscreenToggle;
+    [SerializeField] private Toggle vsyncToggle;
+    [SerializeField] private Slider brightnessSlider;
+    
+    [Header("Gameplay Settings")]
+    [SerializeField] private Toggle vibrationToggle;
+    [SerializeField] private Toggle tutorialToggle;
+    [SerializeField] private Dropdown difficultyDropdown;
+    [SerializeField] private Toggle invertYToggle;
+    [SerializeField] private Slider sensitivitySlider;
+    
+    [Header("Account")]
+    [SerializeField] private InputField playerNameInput;
+    [SerializeField] private Button saveButton;
+    [SerializeField] private Button resetButton;
+    [SerializeField] private Text versionText;
+    
+    [Header("UI Elements")]
+    [SerializeField] private GameObject confirmationDialog;
+    [SerializeField] private Text confirmationText;
+    [SerializeField] private Button confirmButton;
+    [SerializeField] private Button cancelButton;
+    
+    private bool isInitializing = false;
+    private const string VERSION = "1.0.0";
 
-    [Header("Account Settings")]
-    [SerializeField] private Button _signInButton;
-    [SerializeField] private Button _privacyPolicyButton;
-    [SerializeField] private Button _termsButton;
-    [SerializeField] private TextMeshProUGUI _versionText;
-
-    private void Start()
+    protected override void Awake()
     {
-        InitializeSettings();
+        base.Awake();
         SetupListeners();
-    }
-
-    private void InitializeSettings()
-    {
-        // Load saved settings
-        _musicVolumeSlider.value = PlayerPrefs.GetFloat("MusicVolume", 1f);
-        _sfxVolumeSlider.value = PlayerPrefs.GetFloat("SFXVolume", 1f);
-        _muteMusicToggle.isOn = PlayerPrefs.GetInt("MusicMuted", 0) == 1;
-        _muteSfxToggle.isOn = PlayerPrefs.GetInt("SFXMuted", 0) == 1;
-        _vibrationToggle.isOn = PlayerPrefs.GetInt("Vibration", 1) == 1;
-        _powerSavingToggle.isOn = PlayerPrefs.GetInt("PowerSaving", 0) == 1;
-
-        // Setup quality dropdown
-        _qualityDropdown.ClearOptions();
-        _qualityDropdown.AddOptions(new System.Collections.Generic.List<string> {
-            "Low", "Medium", "High"
-        });
-        _qualityDropdown.value = PlayerPrefs.GetInt("QualityLevel", 1);
-
-        // Set version
-        _versionText.text = $"Version {Application.version}";
-        
-        // Update sign in button text
-        UpdateSignInButtonText();
+        if (versionText != null)
+            versionText.text = $"Version {VERSION}";
     }
 
     private void SetupListeners()
     {
-        _musicVolumeSlider.onValueChanged.AddListener(OnMusicVolumeChanged_Internal);
-        _sfxVolumeSlider.onValueChanged.AddListener(OnSFXVolumeChanged_Internal);
-        _muteMusicToggle.onValueChanged.AddListener(OnMuteMusicChanged_Internal);
-        _muteSfxToggle.onValueChanged.AddListener(OnMuteSFXChanged_Internal);
-        _qualityDropdown.onValueChanged.AddListener(OnQualityChanged_Internal);
-        _vibrationToggle.onValueChanged.AddListener(OnVibrationChanged_Internal);
-        _powerSavingToggle.onValueChanged.AddListener(OnPowerSavingChanged_Internal);
+        // Audio listeners
+        if (musicSlider != null)
+            musicSlider.onValueChanged.AddListener(OnMusicVolumeChanged);
+        if (sfxSlider != null)
+            sfxSlider.onValueChanged.AddListener(OnSFXVolumeChanged);
+        if (muteToggle != null)
+            muteToggle.onValueChanged.AddListener(OnMuteChanged);
+
+        // Graphics listeners    
+        if (qualityDropdown != null)
+            qualityDropdown.onValueChanged.AddListener(OnQualityChanged);
+        if (fullscreenToggle != null)
+            fullscreenToggle.onValueChanged.AddListener(OnFullscreenChanged);
+        if (vsyncToggle != null)
+            vsyncToggle.onValueChanged.AddListener(OnVSyncChanged);
+        if (brightnessSlider != null)
+            brightnessSlider.onValueChanged.AddListener(OnBrightnessChanged);
+
+        // Gameplay listeners
+        if (vibrationToggle != null)
+            vibrationToggle.onValueChanged.AddListener(OnVibrationChanged);
+        if (tutorialToggle != null)
+            tutorialToggle.onValueChanged.AddListener(OnTutorialChanged);
+        if (difficultyDropdown != null)
+            difficultyDropdown.onValueChanged.AddListener(OnDifficultyChanged);
+        if (invertYToggle != null)
+            invertYToggle.onValueChanged.AddListener(OnInvertYChanged);
+        if (sensitivitySlider != null)
+            sensitivitySlider.onValueChanged.AddListener(OnSensitivityChanged);
+
+        // Button listeners
+        if (saveButton != null)
+            saveButton.onClick.AddListener(SaveSettings);
+        if (resetButton != null)
+            resetButton.onClick.AddListener(ShowResetConfirmation);
+        if (confirmButton != null)
+            confirmButton.onClick.AddListener(ResetSettings);
+        if (cancelButton != null)
+            cancelButton.onClick.AddListener(HideConfirmationDialog);
+            
+        // Input field listeners
+        if (playerNameInput != null)
+        {
+            playerNameInput.onValueChanged.AddListener(OnPlayerNameChanged);
+            playerNameInput.characterLimit = 16;
+        }
+    }
+
+    protected override IEnumerator LoadContent()
+    {
+        isInitializing = true;
         
-        _signInButton.onClick.AddListener(OnSignInButtonClicked);
-        _privacyPolicyButton.onClick.AddListener(OnPrivacyPolicyPressed);
-        _termsButton.onClick.AddListener(OnTermsPressed);
+        // Initialize dropdowns
+        InitializeQualityDropdown();
+        InitializeDifficultyDropdown();
+        
+        // Load saved settings
+        LoadSettings();
+        
+        yield return new WaitForSeconds(0.5f); // Give time for UI to update
+        
+        if (confirmationDialog != null)
+            confirmationDialog.SetActive(false);
+            
+        isInitializing = false;
     }
 
-    public override void RefreshContent()
+    private void InitializeQualityDropdown()
     {
-        UpdateSignInButtonText();
+        if (qualityDropdown != null)
+        {
+            qualityDropdown.ClearOptions();
+            qualityDropdown.AddOptions(new System.Collections.Generic.List<string> 
+            {
+                "Low",
+                "Medium",
+                "High",
+                "Ultra"
+            });
+        }
     }
 
-    private void UpdateSignInButtonText()
+    private void InitializeDifficultyDropdown()
     {
-        bool isSignedIn = PlayerPrefs.GetInt("IsSignedIn", 0) == 1;
-        _signInButton.GetComponentInChildren<TextMeshProUGUI>().text = 
-            isSignedIn ? "Sign Out" : "Sign In";
+        if (difficultyDropdown != null)
+        {
+            difficultyDropdown.ClearOptions();
+            difficultyDropdown.AddOptions(new System.Collections.Generic.List<string> 
+            {
+                "Easy",
+                "Normal",
+                "Hard",
+                "Expert"
+            });
+        }
     }
 
-    #region Callback Implementations
-    private void OnMusicVolumeChanged_Internal(float value)
+    private void LoadSettings()
     {
+        // Audio settings
+        if (musicSlider != null)
+            musicSlider.value = PlayerPrefs.GetFloat("MusicVolume", 1f);
+        if (sfxSlider != null)
+            sfxSlider.value = PlayerPrefs.GetFloat("SFXVolume", 1f);
+        if (muteToggle != null)
+            muteToggle.isOn = PlayerPrefs.GetInt("Muted", 0) == 1;
+
+        // Graphics settings
+        if (qualityDropdown != null)
+            qualityDropdown.value = PlayerPrefs.GetInt("QualityLevel", QualitySettings.GetQualityLevel());
+        if (fullscreenToggle != null)
+            fullscreenToggle.isOn = PlayerPrefs.GetInt("Fullscreen", Screen.fullScreen ? 1 : 0) == 1;
+        if (vsyncToggle != null)
+            vsyncToggle.isOn = PlayerPrefs.GetInt("VSync", QualitySettings.vSyncCount > 0 ? 1 : 0) == 1;
+        if (brightnessSlider != null)
+            brightnessSlider.value = PlayerPrefs.GetFloat("Brightness", 1f);
+
+        // Gameplay settings
+        if (vibrationToggle != null)
+            vibrationToggle.isOn = PlayerPrefs.GetInt("Vibration", 1) == 1;
+        if (tutorialToggle != null)
+            tutorialToggle.isOn = PlayerPrefs.GetInt("ShowTutorials", 1) == 1;
+        if (difficultyDropdown != null)
+            difficultyDropdown.value = PlayerPrefs.GetInt("Difficulty", 1);
+        if (invertYToggle != null)
+            invertYToggle.isOn = PlayerPrefs.GetInt("InvertY", 0) == 1;
+        if (sensitivitySlider != null)
+            sensitivitySlider.value = PlayerPrefs.GetFloat("Sensitivity", 1f);
+
+        // Account settings
+        if (playerNameInput != null)
+            playerNameInput.text = PlayerPrefs.GetString("PlayerName", "Player");
+    }
+
+    private void OnMusicVolumeChanged(float value)
+    {
+        if (isInitializing) return;
         PlayerPrefs.SetFloat("MusicVolume", value);
-        if (_audioMixer != null)
-        {
-            _audioMixer.SetFloat("MusicVolume", Mathf.Log10(value) * 20);
-        }
-        OnMusicVolumeChanged?.Invoke(value);
+        // Implement actual volume change through audio manager
     }
 
-    private void OnSFXVolumeChanged_Internal(float value)
+    private void OnSFXVolumeChanged(float value)
     {
+        if (isInitializing) return;
         PlayerPrefs.SetFloat("SFXVolume", value);
-        if (_audioMixer != null)
+        
+        // Play test sound
+        if (audioSource != null && testSound != null)
         {
-            _audioMixer.SetFloat("SFXVolume", Mathf.Log10(value) * 20);
-        }
-        OnSfxVolumeChanged?.Invoke(value);
-    }
-
-    private void OnMuteMusicChanged_Internal(bool value)
-    {
-        PlayerPrefs.SetInt("MusicMuted", value ? 1 : 0);
-        if (_audioMixer != null)
-        {
-            _audioMixer.SetFloat("MusicVolume", value ? -80f : Mathf.Log10(_musicVolumeSlider.value) * 20);
-        }
-        OnMusicMuteChanged?.Invoke(value);
-    }
-
-    private void OnMuteSFXChanged_Internal(bool value)
-    {
-        PlayerPrefs.SetInt("SFXMuted", value ? 1 : 0);
-        if (_audioMixer != null)
-        {
-            _audioMixer.SetFloat("SFXVolume", value ? -80f : Mathf.Log10(_sfxVolumeSlider.value) * 20);
-        }
-        OnSfxMuteChanged?.Invoke(value);
-    }
-
-    private void OnQualityChanged_Internal(int value)
-    {
-        PlayerPrefs.SetInt("QualityLevel", value);
-        QualitySettings.SetQualityLevel(value, true);
-        OnQualityChanged?.Invoke(value);
-    }
-
-    private void OnVibrationChanged_Internal(bool value)
-    {
-        PlayerPrefs.SetInt("Vibration", value ? 1 : 0);
-        OnVibrationChanged?.Invoke(value);
-    }
-
-    private void OnPowerSavingChanged_Internal(bool value)
-    {
-        PlayerPrefs.SetInt("PowerSaving", value ? 1 : 0);
-        Application.targetFrameRate = value ? 30 : 60;
-        OnPowerSavingChanged?.Invoke(value);
-    }
-
-    private void OnSignInButtonClicked()
-    {
-        bool isSignedIn = PlayerPrefs.GetInt("IsSignedIn", 0) == 1;
-        if (isSignedIn)
-        {
-            OnSignOutRequested?.Invoke();
-        }
-        else
-        {
-            OnSignInRequested?.Invoke();
+            audioSource.PlayOneShot(testSound, value);
         }
     }
 
-    private void OnPrivacyPolicyPressed()
+    private void OnMuteChanged(bool muted)
     {
-        Application.OpenURL("https://your-privacy-policy-url.com");
+        if (isInitializing) return;
+        PlayerPrefs.SetInt("Muted", muted ? 1 : 0);
+        
+        // Update UI state
+        musicSlider.interactable = !muted;
+        sfxSlider.interactable = !muted;
     }
 
-    private void OnTermsPressed()
+    private void OnQualityChanged(int index)
     {
-        Application.OpenURL("https://your-terms-url.com");
+        if (isInitializing) return;
+        QualitySettings.SetQualityLevel(index);
+        PlayerPrefs.SetInt("QualityLevel", index);
     }
-    #endregion
 
-    private void OnDestroy()
+    private void OnFullscreenChanged(bool fullscreen)
     {
-        // Clean up listeners
-        if (_musicVolumeSlider != null) _musicVolumeSlider.onValueChanged.RemoveAllListeners();
-        if (_sfxVolumeSlider != null) _sfxVolumeSlider.onValueChanged.RemoveAllListeners();
-        if (_muteMusicToggle != null) _muteMusicToggle.onValueChanged.RemoveAllListeners();
-        if (_muteSfxToggle != null) _muteSfxToggle.onValueChanged.RemoveAllListeners();
-        if (_qualityDropdown != null) _qualityDropdown.onValueChanged.RemoveAllListeners();
-        if (_vibrationToggle != null) _vibrationToggle.onValueChanged.RemoveAllListeners();
-        if (_powerSavingToggle != null) _powerSavingToggle.onValueChanged.RemoveAllListeners();
-        if (_signInButton != null) _signInButton.onClick.RemoveAllListeners();
-        if (_privacyPolicyButton != null) _privacyPolicyButton.onClick.RemoveAllListeners();
-        if (_termsButton != null) _termsButton.onClick.RemoveAllListeners();
+        if (isInitializing) return;
+        Screen.fullScreen = fullscreen;
+        PlayerPrefs.SetInt("Fullscreen", fullscreen ? 1 : 0);
+    }
+
+    private void OnVSyncChanged(bool enabled)
+    {
+        if (isInitializing) return;
+        QualitySettings.vSyncCount = enabled ? 1 : 0;
+        PlayerPrefs.SetInt("VSync", enabled ? 1 : 0);
+    }
+
+    private void OnBrightnessChanged(float value)
+    {
+        if (isInitializing) return;
+        PlayerPrefs.SetFloat("Brightness", value);
+        // Implement brightness change through post-processing
+    }
+
+    private void OnVibrationChanged(bool enabled)
+    {
+        if (isInitializing) return;
+        PlayerPrefs.SetInt("Vibration", enabled ? 1 : 0);
+        // Implement vibration toggle through device
+    }
+
+    private void OnTutorialChanged(bool enabled)
+    {
+        if (isInitializing) return;
+        PlayerPrefs.SetInt("ShowTutorials", enabled ? 1 : 0);
+    }
+
+    private void OnDifficultyChanged(int index)
+    {
+        if (isInitializing) return;
+        PlayerPrefs.SetInt("Difficulty", index);
+    }
+
+    private void OnInvertYChanged(bool enabled)
+    {
+        if (isInitializing) return;
+        PlayerPrefs.SetInt("InvertY", enabled ? 1 : 0);
+    }
+
+    private void OnSensitivityChanged(float value)
+    {
+        if (isInitializing) return;
+        PlayerPrefs.SetFloat("Sensitivity", value);
+    }
+
+    private void OnPlayerNameChanged(string newName)
+    {
+        if (isInitializing) return;
+        saveButton.interactable = !string.IsNullOrEmpty(newName.Trim());
+    }
+
+    private void ShowResetConfirmation()
+    {
+        if (confirmationDialog != null)
+        {
+            confirmationDialog.SetActive(true);
+            confirmationText.text = "Reset all settings to default values?";
+        }
+    }
+
+    private void HideConfirmationDialog()
+    {
+        if (confirmationDialog != null)
+            confirmationDialog.SetActive(false);
+    }
+
+    private void SaveSettings()
+    {
+        if (playerNameInput != null && !string.IsNullOrEmpty(playerNameInput.text.Trim()))
+        {
+            PlayerPrefs.SetString("PlayerName", playerNameInput.text.Trim());
+        }
+        
+        PlayerPrefs.Save();
+        StartCoroutine(ShowSaveConfirmation());
+    }
+
+    private IEnumerator ShowSaveConfirmation()
+    {
+        saveButton.interactable = false;
+        Text buttonText = saveButton.GetComponentInChildren<Text>();
+        string originalText = buttonText.text;
+        buttonText.text = "Saved!";
+        
+        yield return new WaitForSeconds(1f);
+        
+        buttonText.text = originalText;
+        saveButton.interactable = true;
+    }
+
+    private void ResetSettings()
+    {
+        isInitializing = true;
+        
+        // Reset Audio
+        if (musicSlider != null) musicSlider.value = 1f;
+        if (sfxSlider != null) sfxSlider.value = 1f;
+        if (muteToggle != null) muteToggle.isOn = false;
+
+        // Reset Graphics
+        if (qualityDropdown != null) qualityDropdown.value = 2; // Medium quality
+        if (fullscreenToggle != null) fullscreenToggle.isOn = true;
+        if (vsyncToggle != null) vsyncToggle.isOn = true;
+        if (brightnessSlider != null) brightnessSlider.value = 1f;
+
+        // Reset Gameplay
+        if (vibrationToggle != null) vibrationToggle.isOn = true;
+        if (tutorialToggle != null) tutorialToggle.isOn = true;
+        if (difficultyDropdown != null) difficultyDropdown.value = 1; // Normal difficulty
+        if (invertYToggle != null) invertYToggle.isOn = false;
+        if (sensitivitySlider != null) sensitivitySlider.value = 1f;
+
+        // Reset Account
+        if (playerNameInput != null) playerNameInput.text = "Player";
+        
+        // Save all default values
+        SaveSettings();
+        
+        // Hide confirmation dialog
+        HideConfirmationDialog();
+        
+        isInitializing = false;
+    }
+
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+        
+        // Remove all listeners
+        if (musicSlider != null) musicSlider.onValueChanged.RemoveAllListeners();
+        if (sfxSlider != null) sfxSlider.onValueChanged.RemoveAllListeners();
+        if (muteToggle != null) muteToggle.onValueChanged.RemoveAllListeners();
+        if (qualityDropdown != null) qualityDropdown.onValueChanged.RemoveAllListeners();
+        if (fullscreenToggle != null) fullscreenToggle.onValueChanged.RemoveAllListeners();
+        if (vsyncToggle != null) vsyncToggle.onValueChanged.RemoveAllListeners();
+        if (brightnessSlider != null) brightnessSlider.onValueChanged.RemoveAllListeners();
+        if (vibrationToggle != null) vibrationToggle.onValueChanged.RemoveAllListeners();
+        if (tutorialToggle != null) tutorialToggle.onValueChanged.RemoveAllListeners();
+        if (difficultyDropdown != null) difficultyDropdown.onValueChanged.RemoveAllListeners();
+        if (invertYToggle != null) invertYToggle.onValueChanged.RemoveAllListeners();
+        if (sensitivitySlider != null) sensitivitySlider.onValueChanged.RemoveAllListeners();
+        if (saveButton != null) saveButton.onClick.RemoveAllListeners();
+        if (resetButton != null) resetButton.onClick.RemoveAllListeners();
+        if (confirmButton != null) confirmButton.onClick.RemoveAllListeners();
+        if (cancelButton != null) cancelButton.onClick.RemoveAllListeners();
+        if (playerNameInput != null) playerNameInput.onValueChanged.RemoveAllListeners();
     }
 }

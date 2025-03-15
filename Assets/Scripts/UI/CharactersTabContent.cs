@@ -1,6 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
+using System.Collections;
 using System.Collections.Generic;
 
 public class CharactersTabContent : TabContent
@@ -10,299 +10,171 @@ public class CharactersTabContent : TabContent
     {
         public string id;
         public string characterName;
-        public Sprite portrait;
-        public Sprite fullBodyImage;
+        public Sprite icon;
+        public string description;
+        public bool isUnlocked;
         public int unlockCost;
-        public bool isDefault;
-        [HideInInspector] public bool isUnlocked;
-        public string[] abilities;
-        public int powerLevel;
+        public RuntimeAnimatorController animator;
+        public GameObject characterPrefab;
     }
 
     [Header("Character Display")]
-    [SerializeField] private Image _selectedCharacterImage;
-    [SerializeField] private TextMeshProUGUI _characterNameText;
-    [SerializeField] private TextMeshProUGUI _powerLevelText;
-    [SerializeField] private TextMeshProUGUI _abilitiesText;
+    [SerializeField] private Transform characterGrid;
+    [SerializeField] private GameObject characterCardPrefab;
+    [SerializeField] private GameObject characterPreviewArea;
     
-    [Header("Character List")]
-    [SerializeField] private Transform _charactersGrid;
-    [SerializeField] private GameObject _characterButtonPrefab;
-    [SerializeField] private Character[] _availableCharacters;
+    [Header("Character Details")]
+    [SerializeField] private Image characterIcon;
+    [SerializeField] private Text characterNameText;
+    [SerializeField] private Text characterDescriptionText;
+    [SerializeField] private Button selectButton;
+    [SerializeField] private Button unlockButton;
+    [SerializeField] private Text unlockCostText;
+    
+    [Header("Characters")]
+    [SerializeField] private List<Character> characters = new List<Character>();
 
-    [Header("Actions")]
-    [SerializeField] private Button _selectButton;
-    [SerializeField] private Button _unlockButton;
-    [SerializeField] private Button _upgradeButton;
-    [SerializeField] private TextMeshProUGUI _unlockCostText;
-    [SerializeField] private TextMeshProUGUI _currentCoinsText;
+    private Character selectedCharacter;
+    private string currentCharacterId;
+    private GameObject previewCharacter;
 
-    private Character _selectedCharacter;
-    private List<GameObject> _characterButtons = new List<GameObject>();
-
-    // Events
-    public System.Action<Character> onCharacterSelected;
-    public System.Action<Character> onCharacterUnlocked;
-    public System.Action<Character> onCharacterUpgraded;
-
-    void Start()
+    protected override IEnumerator LoadContent()
     {
-        InitializeCharacters();
-        SetupListeners();
-        UpdateCoinsDisplay();
+        // Load current character selection
+        currentCharacterId = PlayerPrefs.GetString("SelectedCharacter", characters[0].id);
+
+        // Set up buttons
+        selectButton.onClick.AddListener(OnSelectButtonClicked);
+        unlockButton.onClick.AddListener(OnUnlockButtonClicked);
+
+        // Create character cards
+        CreateCharacterCards();
+
+        // Select current character
+        SelectCharacter(characters.Find(c => c.id == currentCharacterId));
+
+        yield break;
     }
 
-    private void InitializeCharacters()
+    private void CreateCharacterCards()
     {
-        ClearExistingButtons();
-        CreateCharacterButtons();
-        SelectDefaultCharacter();
-    }
+        // Clear existing cards
+        foreach (Transform child in characterGrid)
+            Destroy(child.gameObject);
 
-    private void ClearExistingButtons()
-    {
-        foreach (var button in _characterButtons)
+        // Create new cards
+        foreach (var character in characters)
         {
-            if (button != null)
-            {
-                Destroy(button);
-            }
-        }
-        _characterButtons.Clear();
-    }
-
-    private void CreateCharacterButtons()
-    {
-        foreach (var character in _availableCharacters)
-        {
-            character.isUnlocked = character.isDefault || 
-                                 PlayerPrefs.GetInt($"Character_{character.id}_Unlocked", 0) == 1;
-            
-            GameObject buttonObj = Instantiate(_characterButtonPrefab, _charactersGrid);
-            SetupCharacterButton(buttonObj, character);
-            _characterButtons.Add(buttonObj);
+            GameObject card = Instantiate(characterCardPrefab, characterGrid);
+            SetupCharacterCard(card, character);
         }
     }
 
-    private void SetupCharacterButton(GameObject buttonObj, Character character)
+    private void SetupCharacterCard(GameObject card, Character character)
     {
-        Button button = buttonObj.GetComponent<Button>();
-        Image portrait = buttonObj.GetComponentInChildren<Image>();
-        
-        portrait.sprite = character.portrait;
-        button.onClick.AddListener(() => SelectCharacter(character));
-        
-        // Setup lock icon
-        Transform lockIcon = buttonObj.transform.Find("LockIcon");
+        // Set up card visuals
+        card.GetComponentInChildren<Image>().sprite = character.icon;
+        card.GetComponentInChildren<Text>().text = character.characterName;
+
+        // Set up lock indicator
+        var lockIcon = card.transform.Find("LockIcon")?.gameObject;
         if (lockIcon != null)
+            lockIcon.SetActive(!character.isUnlocked);
+
+        // Add click handler
+        Button button = card.GetComponent<Button>();
+        button.onClick.AddListener(() => SelectCharacter(character));
+
+        // Visual feedback for selected character
+        if (character.id == currentCharacterId)
         {
-            lockIcon.gameObject.SetActive(!character.isUnlocked);
+            card.transform.localScale *= 1.1f;
         }
-
-        // Setup level or power indicator if exists
-        TextMeshProUGUI levelText = buttonObj.GetComponentInChildren<TextMeshProUGUI>();
-        if (levelText != null)
-        {
-            int level = PlayerPrefs.GetInt($"Character_{character.id}_Level", 1);
-            levelText.text = $"Lvl {level}";
-        }
-    }
-
-    private void SelectDefaultCharacter()
-    {
-        string savedCharacterId = PlayerPrefs.GetString("SelectedCharacter", "");
-        Character defaultCharacter = null;
-
-        // Try to select previously selected character
-        if (!string.IsNullOrEmpty(savedCharacterId))
-        {
-            defaultCharacter = System.Array.Find(_availableCharacters, 
-                c => c.id == savedCharacterId && c.isUnlocked);
-        }
-
-        // If no previous character or it's locked, select first unlocked character
-        if (defaultCharacter == null)
-        {
-            defaultCharacter = System.Array.Find(_availableCharacters, c => c.isUnlocked);
-        }
-
-        if (defaultCharacter != null)
-        {
-            SelectCharacter(defaultCharacter);
-        }
-    }
-
-    private void SetupListeners()
-    {
-        _selectButton?.onClick.AddListener(OnSelectPressed);
-        _unlockButton?.onClick.AddListener(OnUnlockPressed);
-        _upgradeButton?.onClick.AddListener(OnUpgradePressed);
-    }
-
-    public override void RefreshContent()
-    {
-        UpdateCharacterDisplay();
-        UpdateButtonStates();
-        UpdateCoinsDisplay();
     }
 
     private void SelectCharacter(Character character)
     {
-        _selectedCharacter = character;
-        UpdateCharacterDisplay();
-        UpdateButtonStates();
-    }
+        selectedCharacter = character;
 
-    private void UpdateCharacterDisplay()
-    {
-        if (_selectedCharacter == null) return;
+        // Update UI
+        characterIcon.sprite = character.icon;
+        characterNameText.text = character.characterName;
+        characterDescriptionText.text = character.description;
 
-        _selectedCharacterImage.sprite = _selectedCharacter.fullBodyImage;
-        _characterNameText.text = _selectedCharacter.characterName;
+        // Update buttons
+        selectButton.gameObject.SetActive(character.isUnlocked);
+        unlockButton.gameObject.SetActive(!character.isUnlocked);
         
-        int characterLevel = PlayerPrefs.GetInt($"Character_{_selectedCharacter.id}_Level", 1);
-        _powerLevelText.text = $"Power Level: {_selectedCharacter.powerLevel * characterLevel}";
-        
-        string abilities = string.Join("\n• ", _selectedCharacter.abilities);
-        _abilitiesText.text = $"Abilities:\n• {abilities}";
-    }
-
-    private void UpdateButtonStates()
-    {
-        if (_selectedCharacter == null) return;
-
-        bool isUnlocked = _selectedCharacter.isUnlocked;
-        bool isSelected = PlayerPrefs.GetString("SelectedCharacter", "") == _selectedCharacter.id;
-
-        _selectButton.gameObject.SetActive(isUnlocked);
-        _selectButton.interactable = !isSelected;
-        _unlockButton.gameObject.SetActive(!isUnlocked);
-        _upgradeButton.gameObject.SetActive(isUnlocked);
-
-        if (!isUnlocked)
+        if (!character.isUnlocked)
         {
-            _unlockCostText.text = $"{_selectedCharacter.unlockCost} Coins";
+            unlockCostText.text = $"Unlock: {character.unlockCost}";
         }
 
-        // Update upgrade button state
-        if (isUnlocked)
+        // Update preview
+        UpdateCharacterPreview();
+    }
+
+    private void UpdateCharacterPreview()
+    {
+        // Clear existing preview
+        if (previewCharacter != null)
+            Destroy(previewCharacter);
+
+        // Create new preview
+        if (selectedCharacter.characterPrefab != null)
         {
-            int currentLevel = PlayerPrefs.GetInt($"Character_{_selectedCharacter.id}_Level", 1);
-            int upgradeCost = CalculateUpgradeCost(currentLevel);
-            _upgradeButton.interactable = PlayerPrefs.GetInt("Coins", 0) >= upgradeCost;
-        }
-    }
-
-    private void UpdateCoinsDisplay()
-    {
-        int coins = PlayerPrefs.GetInt("Coins", 0);
-        _currentCoinsText.text = $"Coins: {coins}";
-    }
-
-    private void OnSelectPressed()
-    {
-        if (_selectedCharacter == null || !_selectedCharacter.isUnlocked) return;
-        
-        PlayerPrefs.SetString("SelectedCharacter", _selectedCharacter.id);
-        UpdateButtonStates();
-        onCharacterSelected?.Invoke(_selectedCharacter);
-        
-        // Optional: Play selection animation/sound
-        PlaySelectionEffect();
-    }
-
-    private void OnUnlockPressed()
-    {
-        if (_selectedCharacter == null || _selectedCharacter.isUnlocked) return;
-
-        int currentCoins = PlayerPrefs.GetInt("Coins", 0);
-        if (currentCoins >= _selectedCharacter.unlockCost)
-        {
-            // Deduct coins and unlock character
-            PlayerPrefs.SetInt("Coins", currentCoins - _selectedCharacter.unlockCost);
-            PlayerPrefs.SetInt($"Character_{_selectedCharacter.id}_Unlocked", 1);
-            _selectedCharacter.isUnlocked = true;
-            
-            // Update UI
-            RefreshContent();
-            onCharacterUnlocked?.Invoke(_selectedCharacter);
-            
-            // Play unlock effect
-            PlayUnlockEffect();
-        }
-        else
-        {
-            ShowInsufficientCoinsMessage();
-        }
-    }
-
-    private void OnUpgradePressed()
-    {
-        if (_selectedCharacter == null || !_selectedCharacter.isUnlocked) return;
-        
-        int currentLevel = PlayerPrefs.GetInt($"Character_{_selectedCharacter.id}_Level", 1);
-        int upgradeCost = CalculateUpgradeCost(currentLevel);
-        int currentCoins = PlayerPrefs.GetInt("Coins", 0);
-
-        if (currentCoins >= upgradeCost)
-        {
-            // Process upgrade
-            PlayerPrefs.SetInt("Coins", currentCoins - upgradeCost);
-            PlayerPrefs.SetInt($"Character_{_selectedCharacter.id}_Level", currentLevel + 1);
-            
-            // Update UI
-            RefreshContent();
-            onCharacterUpgraded?.Invoke(_selectedCharacter);
-            
-            // Play upgrade effect
-            PlayUpgradeEffect();
-        }
-        else
-        {
-            ShowInsufficientCoinsMessage();
-        }
-    }
-
-    private int CalculateUpgradeCost(int currentLevel)
-    {
-        // Example: Cost increases exponentially with level
-        return 100 * currentLevel * currentLevel;
-    }
-
-    private void PlaySelectionEffect()
-    {
-        // TODO: Implement selection animation/sound
-        Debug.Log($"Selected character: {_selectedCharacter.characterName}");
-    }
-
-    private void PlayUnlockEffect()
-    {
-        // TODO: Implement unlock animation/sound
-        Debug.Log($"Unlocked character: {_selectedCharacter.characterName}");
-    }
-
-    private void PlayUpgradeEffect()
-    {
-        // TODO: Implement upgrade animation/sound
-        Debug.Log($"Upgraded character: {_selectedCharacter.characterName}");
-    }
-
-    private void ShowInsufficientCoinsMessage()
-    {
-        // TODO: Show UI message for insufficient coins
-        Debug.Log("Not enough coins!");
-    }
-
-    private void OnDestroy()
-    {
-        // Clean up listeners
-        foreach (var button in _characterButtons)
-        {
-            if (button != null)
+            previewCharacter = Instantiate(selectedCharacter.characterPrefab, characterPreviewArea.transform);
+            var animator = previewCharacter.GetComponent<Animator>();
+            if (animator && selectedCharacter.animator)
             {
-                Button buttonComponent = button.GetComponent<Button>();
-                buttonComponent.onClick.RemoveAllListeners();
+                animator.runtimeAnimatorController = selectedCharacter.animator;
+                animator.Play("Idle");
             }
+        }
+    }
+
+    private void OnSelectButtonClicked()
+    {
+        if (selectedCharacter != null && selectedCharacter.isUnlocked)
+        {
+            currentCharacterId = selectedCharacter.id;
+            PlayerPrefs.SetString("SelectedCharacter", currentCharacterId);
+            
+            // Refresh character cards to update selection visual
+            CreateCharacterCards();
+        }
+    }
+
+    private void OnUnlockButtonClicked()
+    {
+        if (selectedCharacter == null || selectedCharacter.isUnlocked)
+            return;
+
+        int currentCoins = PlayerPrefs.GetInt("Coins", 0);
+        if (currentCoins >= selectedCharacter.unlockCost)
+        {
+            // Process unlock
+            currentCoins -= selectedCharacter.unlockCost;
+            PlayerPrefs.SetInt("Coins", currentCoins);
+            selectedCharacter.isUnlocked = true;
+
+            // Save unlocked status
+            PlayerPrefs.SetInt($"Character_{selectedCharacter.id}_Unlocked", 1);
+
+            // Refresh UI
+            SelectCharacter(selectedCharacter);
+            CreateCharacterCards();
+        }
+        else
+        {
+            // Show "not enough coins" message
+            Debug.Log("Not enough coins to unlock character!");
+        }
+
+        void OnDestroy()
+        {
+            if (previewCharacter != null)
+                Destroy(previewCharacter);
         }
     }
 }
