@@ -1,66 +1,47 @@
-// Save as: Assets/Scripts/EnemySpawner.cs
+// Save as: Assets/Scripts/Enemies/EnemySpawner.cs
 using UnityEngine;
 using System.Collections.Generic;
 
 public class EnemySpawner : MonoBehaviour
 {
     [System.Serializable]
-    public class DifficultyWave
+    public class SpawnWave
     {
         public float startTime = 0f;
-        public EnemyScriptableObject[] enemyTypes;
+        public GameObject[] enemyPrefabs;
         public float spawnRate = 1f;
-        public int maxSimultaneousEnemies = 5;
-        public bool useRandomPosition = true;
+        public int maxEnemies = 5;
+        public bool useRandomSpawn = true;
+        [Range(0f, 1f)] public float shooterProbability = 0.3f;
     }
 
     [Header("Wave Settings")]
-    public DifficultyWave[] waves;
-    public float baseSpawnRate = 1f;
-    public float spawnRateIncrease = 0.1f;
-    public float maxSpawnRate = 3f;
+    public SpawnWave[] waves;
+    public float baseSpawnDelay = 0.5f;
+    public float minSpawnDelay = 0.2f;
 
-    [Header("Boundaries")]
-    public float horizontalBoundary = 8.5f;  // Screen width boundary
-    public float verticalBoundary = 4.5f;    // Screen height boundary
-    public float spawnHeight = 6f;           // Spawn above screen
-    
+    [Header("Spawn Area")]
+    public float horizontalSpawnWidth = 8.5f;
+    public float verticalSpawnHeight = 4.5f;
+    public float spawnYOffset = 1f;
+
+    private float gameTime;
     private float nextSpawnTime;
-    private float currentSpawnRate;
-    private DifficultyWave currentWave;
+    private SpawnWave currentWave;
     private readonly List<GameObject> activeEnemies = new();
     private Transform enemyContainer;
     private bool isSpawning;
-    private float gameTime;
 
     private void Start()
     {
-        currentSpawnRate = baseSpawnRate;
         SetupContainer();
-        SetInitialWave();
+        ResetSpawner();
     }
 
     private void SetupContainer()
     {
-        if (enemyContainer == null)
-        {
-            GameObject container = new GameObject("EnemyContainer");
-            enemyContainer = container.transform;
-            enemyContainer.SetParent(transform);
-        }
-    }
-
-    private void SetInitialWave()
-    {
-        if (waves != null && waves.Length > 0)
-        {
-            currentWave = waves[0];
-            Debug.Log($"[{GameManager.instance.currentUserLogin}] Initial wave set at {System.DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
-        }
-        else
-        {
-            Debug.LogError($"[{GameManager.instance.currentUserLogin}] No waves configured in EnemySpawner!");
-        }
+        enemyContainer = new GameObject("EnemyContainer").transform;
+        enemyContainer.SetParent(transform);
     }
 
     private void Update()
@@ -68,77 +49,15 @@ public class EnemySpawner : MonoBehaviour
         if (!GameManager.instance.isGameActive || !isSpawning) return;
 
         gameTime += Time.deltaTime;
+        UpdateWave();
         
         if (Time.time >= nextSpawnTime && CanSpawnEnemy())
         {
             SpawnEnemy();
-            UpdateSpawnRate();
-            nextSpawnTime = Time.time + (1f / currentSpawnRate);
+            UpdateNextSpawnTime();
         }
 
-        UpdateWave();
         CleanupEnemies();
-    }
-
-    private bool CanSpawnEnemy()
-    {
-        return currentWave != null && 
-               activeEnemies.Count < currentWave.maxSimultaneousEnemies;
-    }
-
-    private void SpawnEnemy()
-    {
-        if (currentWave?.enemyTypes == null || currentWave.enemyTypes.Length == 0) return;
-
-        // Select random enemy type
-        int randomIndex = Random.Range(0, currentWave.enemyTypes.Length);
-        EnemyScriptableObject enemyData = currentWave.enemyTypes[randomIndex];
-        
-        // Calculate spawn position
-        Vector3 spawnPosition = GetSpawnPosition();
-        
-        // Create enemy
-        GameObject enemyObject = new GameObject($"Enemy_{enemyData.enemyName}");
-        enemyObject.transform.SetParent(enemyContainer);
-        enemyObject.transform.position = spawnPosition;
-
-        // Add components
-        var spriteRenderer = enemyObject.AddComponent<SpriteRenderer>();
-        spriteRenderer.sprite = enemyData.enemySprite;
-        spriteRenderer.color = enemyData.enemyColor;
-
-        var collider = enemyObject.AddComponent<BoxCollider2D>();
-        collider.isTrigger = true;
-        
-        var controller = enemyObject.AddComponent<EnemyController>();
-        controller.enemyData = enemyData;
-
-        activeEnemies.Add(enemyObject);
-        
-        Debug.Log($"[{GameManager.instance.currentUserLogin}] Spawned {enemyData.enemyName} at {spawnPosition}");
-    }
-
-    private Vector3 GetSpawnPosition()
-    {
-        if (currentWave.useRandomPosition)
-        {
-            // Random position along top of screen
-            float x = Random.Range(-horizontalBoundary, horizontalBoundary);
-            return new Vector3(x, spawnHeight, 0f);
-        }
-        else
-        {
-            // Center position at spawn height
-            return new Vector3(0f, spawnHeight, 0f);
-        }
-    }
-
-    private void UpdateSpawnRate()
-    {
-        currentSpawnRate = Mathf.Min(
-            baseSpawnRate + (spawnRateIncrease * (gameTime / 60f)), // Increase every minute
-            maxSpawnRate
-        );
     }
 
     private void UpdateWave()
@@ -150,11 +69,47 @@ public class EnemySpawner : MonoBehaviour
                 if (currentWave != waves[i])
                 {
                     currentWave = waves[i];
-                    Debug.Log($"[{GameManager.instance.currentUserLogin}] Wave changed at {gameTime:F1}s");
+                    LogWaveChange(i);
                 }
                 break;
             }
         }
+    }
+
+    private bool CanSpawnEnemy()
+    {
+        return currentWave != null && activeEnemies.Count < currentWave.maxEnemies;
+    }
+
+    private void SpawnEnemy()
+    {
+        if (currentWave?.enemyPrefabs == null || currentWave.enemyPrefabs.Length == 0)
+        {
+            Debug.LogWarning($"[{GameManager.instance.currentUserLogin}] No enemy prefabs configured!");
+            return;
+        }
+
+        Vector3 spawnPos = GetSpawnPosition();
+        GameObject prefab = currentWave.enemyPrefabs[Random.Range(0, currentWave.enemyPrefabs.Length)];
+        GameObject enemy = Instantiate(prefab, spawnPos, Quaternion.identity, enemyContainer);
+        
+        activeEnemies.Add(enemy);
+    }
+
+    private Vector3 GetSpawnPosition()
+    {
+        if (currentWave.useRandomSpawn)
+        {
+            float x = Random.Range(-horizontalSpawnWidth, horizontalSpawnWidth);
+            return new Vector3(x, verticalSpawnHeight + spawnYOffset, 0f);
+        }
+        return new Vector3(0f, verticalSpawnHeight + spawnYOffset, 0f);
+    }
+
+    private void UpdateNextSpawnTime()
+    {
+        float delay = Mathf.Max(minSpawnDelay, baseSpawnDelay / currentWave.spawnRate);
+        nextSpawnTime = Time.time + delay;
     }
 
     private void CleanupEnemies()
@@ -163,21 +118,13 @@ public class EnemySpawner : MonoBehaviour
         {
             if (enemy == null) return true;
             
-            // Check if enemy is below screen
-            if (enemy.transform.position.y < -verticalBoundary)
+            Vector3 viewportPoint = Camera.main.WorldToViewportPoint(enemy.transform.position);
+            if (viewportPoint.y < -0.1f)
             {
                 GameManager.instance.AddScore(1);
                 Destroy(enemy);
                 return true;
             }
-            
-            // Check if enemy is far outside horizontal boundaries
-            if (Mathf.Abs(enemy.transform.position.x) > horizontalBoundary * 1.5f)
-            {
-                Destroy(enemy);
-                return true;
-            }
-            
             return false;
         });
     }
@@ -186,14 +133,24 @@ public class EnemySpawner : MonoBehaviour
     {
         isSpawning = true;
         gameTime = 0f;
-        nextSpawnTime = Time.time + (1f / baseSpawnRate);
-        Debug.Log($"[{GameManager.instance.currentUserLogin}] Started spawning enemies");
+        nextSpawnTime = Time.time + baseSpawnDelay;
+        LogEvent("Started spawning");
     }
 
     public void StopSpawning()
     {
         isSpawning = false;
-        Debug.Log($"[{GameManager.instance.currentUserLogin}] Stopped spawning enemies");
+        LogEvent("Stopped spawning");
+    }
+
+    public void ResetSpawner()
+    {
+        gameTime = 0f;
+        nextSpawnTime = 0f;
+        currentWave = waves.Length > 0 ? waves[0] : null;
+        ClearEnemies();
+        isSpawning = false;
+        LogEvent("Reset spawner");
     }
 
     public void ClearEnemies()
@@ -205,31 +162,35 @@ public class EnemySpawner : MonoBehaviour
                 Destroy(enemy);
         }
         activeEnemies.Clear();
-        Debug.Log($"[{GameManager.instance.currentUserLogin}] Cleared {count} enemies");
+        LogEvent($"Cleared {count} enemies");
+    }
+
+    private void LogEvent(string message)
+    {
+        Debug.Log($"[{GameManager.instance.currentUserLogin}][{System.DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] " +
+                 $"EnemySpawner: {message}");
+    }
+
+    private void LogWaveChange(int waveIndex)
+    {
+        Debug.Log($"[{GameManager.instance.currentUserLogin}][{System.DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] " +
+                 $"Wave changed to {waveIndex + 1} at {gameTime:F1}s");
     }
 
     private void OnDrawGizmos()
     {
         // Draw spawn area
         Gizmos.color = Color.yellow;
-        Gizmos.DrawLine(
-            new Vector3(-horizontalBoundary, spawnHeight, 0),
-            new Vector3(horizontalBoundary, spawnHeight, 0)
+        Gizmos.DrawWireCube(
+            new Vector3(0, verticalSpawnHeight + spawnYOffset, 0),
+            new Vector3(horizontalSpawnWidth * 2, 1, 0)
         );
 
         // Draw game boundaries
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireCube(
             Vector3.zero,
-            new Vector3(horizontalBoundary * 2, verticalBoundary * 2, 0)
+            new Vector3(horizontalSpawnWidth * 2, verticalSpawnHeight * 2, 0)
         );
-    }
-
-    private void OnValidate()
-    {
-        // Ensure boundaries are positive
-        horizontalBoundary = Mathf.Max(0.1f, horizontalBoundary);
-        verticalBoundary = Mathf.Max(0.1f, verticalBoundary);
-        spawnHeight = Mathf.Max(verticalBoundary, spawnHeight);
     }
 }

@@ -1,19 +1,19 @@
+// Save as: Assets/Scripts/Enemies/StandardEnemy.cs
 using UnityEngine;
 
 public class StandardEnemy : EnemyBase
 {
-    [Header("Standard Enemy Settings")]
-    public float oscillationMagnitude = 2f;
-    public float oscillationSpeed = 2f;
-
-    protected override void CustomMovement()
+    [Header("Movement Settings")]
+    public float horizontalSpeed = 5f;
+    public float verticalSpeed = 2f;
+    public float amplitude = 1f;
+    
+    protected override void HandleMovement()
     {
-        float verticalMovement = Mathf.Sin(timeAlive * oscillationSpeed) * oscillationMagnitude;
+        // Basic sine wave movement
+        float newY = initialPosition.y + Mathf.Sin(timeAlive * verticalSpeed) * amplitude;
+        float newX = initialPosition.x - horizontalSpeed * Time.deltaTime;
         
-        Vector3 newPosition = initialPosition;
-        newPosition.x -= moveSpeed * timeAlive;
-        newPosition.y += verticalMovement;
-        
-        transform.position = newPosition;
+        transform.position = new Vector3(newX, newY, transform.position.z);
     }
 }

@@ -1,73 +1,81 @@
+// Save as: Assets/Scripts/Enemies/EnemyBase.cs
 using UnityEngine;
 
+[RequireComponent(typeof(SpriteRenderer))]
+[RequireComponent(typeof(BoxCollider2D))]
+[RequireComponent(typeof(Rigidbody2D))]
 public abstract class EnemyBase : MonoBehaviour
 {
-    [Header("Base Stats")]
-    public float moveSpeed = 3f;
-    public int scoreValue = 10;
-    public float lifetime = 10f;
-    
-    [Header("Movement")]
-    public bool useCustomMovement = false;
-    public AnimationCurve movementPattern;
-    
+    [Header("Components")]
+    protected SpriteRenderer spriteRenderer;
+    protected BoxCollider2D boxCollider;
+    protected Rigidbody2D rb;
+    protected Animator animator;
+
+    [Header("State")]
+    protected bool isInitialized;
+    protected bool isDestroyed;
     protected Vector3 initialPosition;
     protected float timeAlive;
-    protected bool isInitialized;
+    protected float spawnTime;
+
+    protected virtual void Awake()
+    {
+        // Get components
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        boxCollider = GetComponent<BoxCollider2D>();
+        rb = GetComponent<Rigidbody2D>();
+        
+        // Set up physics
+        rb.gravityScale = 0f;
+        rb.isKinematic = true;
+        boxCollider.isTrigger = true;
+    }
 
     protected virtual void Start()
     {
+        spawnTime = Time.time;
         initialPosition = transform.position;
         isInitialized = true;
+        
+        LogSpawn();
     }
 
     protected virtual void Update()
     {
-        if (!isInitialized || GameManager.instance.currentState != GameManager.GameState.Playing)
+        if (!isInitialized || isDestroyed || 
+            GameManager.instance.currentState != GameManager.GameState.Playing)
             return;
 
         timeAlive += Time.deltaTime;
-        
-        if (timeAlive >= lifetime)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
-        Movement();
+        HandleMovement();
+        CheckBounds();
     }
 
-    protected virtual void Movement()
+    protected virtual void HandleMovement()
     {
-        if (useCustomMovement)
+        // Override in derived classes
+    }
+
+    protected virtual void CheckBounds()
+    {
+        Vector3 viewportPoint = Camera.main.WorldToViewportPoint(transform.position);
+        if (viewportPoint.x < -0.1f || viewportPoint.x > 1.1f ||
+            viewportPoint.y < -0.1f || viewportPoint.y > 1.1f)
         {
-            CustomMovement();
-        }
-        else
-        {
-            DefaultMovement();
+            OnOutOfBounds();
         }
     }
 
-    protected virtual void DefaultMovement()
+    protected virtual void OnOutOfBounds()
     {
-        transform.Translate(Vector3.left * moveSpeed * Time.deltaTime);
-    }
-
-    protected virtual void CustomMovement()
-    {
-        float normalizedTime = timeAlive / lifetime;
-        float verticalOffset = movementPattern.Evaluate(normalizedTime);
-        
-        Vector3 newPosition = initialPosition;
-        newPosition.x -= moveSpeed * timeAlive;
-        newPosition.y += verticalOffset;
-        
-        transform.position = newPosition;
+        Destroy(gameObject);
     }
 
     protected virtual void OnTriggerEnter2D(Collider2D other)
     {
+        if (isDestroyed) return;
+
         if (other.CompareTag("Player"))
         {
             OnHitPlayer();
@@ -76,6 +84,42 @@ public abstract class EnemyBase : MonoBehaviour
 
     protected virtual void OnHitPlayer()
     {
+        var player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            player.TakeDamage(1);  // Default damage value
+        }
+        DestroyEnemy();
+    }
+
+    protected virtual void DestroyEnemy()
+    {
+        if (isDestroyed) return;
+        
+        isDestroyed = true;
+        LogDestruction();
         Destroy(gameObject);
+    }
+
+    protected virtual void LogSpawn()
+    {
+        Debug.Log($"[{GameManager.instance.currentUserLogin}][{System.DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] " +
+                 $"Enemy spawned at {transform.position}");
+    }
+
+    protected virtual void LogDestruction()
+    {
+        float survivalTime = Time.time - spawnTime;
+        Debug.Log($"[{GameManager.instance.currentUserLogin}][{System.DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] " +
+                 $"Enemy destroyed after {survivalTime:F2}s");
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        // Draw movement preview
+        Gizmos.color = Color.yellow;
+        Vector3 startPos = transform.position;
+        Vector3 endPos = transform.position + Vector3.left * 5f;
+        Gizmos.DrawLine(startPos, endPos);
     }
 }
