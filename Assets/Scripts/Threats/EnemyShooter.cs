@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class ShootingEnemy : EnemyBase
+public class EnemyShooter : EnemyBase
 {
     [Header("Shooting Settings")]
     public GameObject projectilePrefab;

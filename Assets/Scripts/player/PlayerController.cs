@@ -4,8 +4,8 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement")]
-    public float moveSpeed = 5f;
-    public float smoothTime = 0.1f;
+    public float moveSpeed = 8f;
+    public float smoothTime = 0.05f; // Reduced for snappier controls
     
     [Header("Boundaries")]
     public float horizontalBoundary = 8.5f;
@@ -14,35 +14,27 @@ public class PlayerController : MonoBehaviour
     [Header("References")]
     public GameObject playerSprite;
     public ParticleSystem deathEffect;
-
-    [Header("Health")]
-    [SerializeField] private float maxHealth = 100f;
-    private float currentHealth;
+    public TrailRenderer trailEffect;
     
     private Vector3 velocity = Vector3.zero;
     private Vector2 targetPosition;
     private bool isDead = false;
     private Camera mainCamera;
-    private GameManager gameManager;
 
     private void Start()
     {
         mainCamera = Camera.main;
         targetPosition = transform.position;
-        currentHealth = maxHealth;
         
-        gameManager = GameManager.instance;
-        if (gameManager != null)
+        if (GameManager.instance != null)
         {
-            gameManager.OnGameStateChanged += HandleGameStateChanged;
+            GameManager.instance.OnGameStateChanged += HandleGameStateChanged;
         }
-    }
 
-    private void OnDestroy()
-    {
-        if (gameManager != null)
+        // Enable trail effect
+        if (trailEffect != null)
         {
-            gameManager.OnGameStateChanged -= HandleGameStateChanged;
+            trailEffect.enabled = true;
         }
     }
 
@@ -53,10 +45,12 @@ public class PlayerController : MonoBehaviour
 
         HandleInput();
         MovePlayer();
+        ClampPosition();
     }
 
     private void HandleInput()
     {
+        // Touch input
         if (Input.touchCount > 0)
         {
             Touch touch = Input.GetTouch(0);
@@ -65,42 +59,55 @@ public class PlayerController : MonoBehaviour
                 targetPosition = mainCamera.ScreenToWorldPoint(touch.position);
             }
         }
+        // Mouse input for testing
+        else if (Input.GetMouseButton(0))
+        {
+            targetPosition = mainCamera.ScreenToWorldPoint(Input.mousePosition);
+        }
     }
 
     private void MovePlayer()
     {
-        Vector3 clampedPosition = new Vector3(
-            Mathf.Clamp(targetPosition.x, -horizontalBoundary, horizontalBoundary),
-            Mathf.Clamp(targetPosition.y, -verticalBoundary, verticalBoundary),
-            0f
-        );
-
         transform.position = Vector3.SmoothDamp(
             transform.position,
-            clampedPosition,
+            new Vector3(targetPosition.x, targetPosition.y, 0f),
             ref velocity,
             smoothTime
         );
     }
 
-    public void TakeDamage(float damage)
+    private void ClampPosition()
     {
-        if (isDead) return;
-
-        currentHealth -= damage;
-        
-        if (currentHealth <= 0)
-        {
-            Die();
-        }
+        Vector3 pos = transform.position;
+        pos.x = Mathf.Clamp(pos.x, -horizontalBoundary, horizontalBoundary);
+        pos.y = Mathf.Clamp(pos.y, -verticalBoundary, verticalBoundary);
+        transform.position = pos;
     }
 
-    private void HandleGameStateChanged(GameManager.GameState newState)
+    public void TakeDamage(float damage)
     {
-        if (newState == GameManager.GameState.GameOver)
+        Die();
+    }
+
+    private void Die()
+    {
+        if (isDead) return;
+        
+        isDead = true;
+        playerSprite.SetActive(false);
+        
+        if (trailEffect != null)
+            trailEffect.enabled = false;
+            
+        if (deathEffect != null)
         {
-            Die();
+            deathEffect.Play();
         }
+
+        // Camera shake effect
+        CameraShake.Instance?.Shake(0.2f, 0.3f);
+
+        GameManager.instance?.GameOver();
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -113,21 +120,19 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    private void Die()
+    private void OnDestroy()
     {
-        if (isDead) return;
-        
-        isDead = true;
-        playerSprite.SetActive(false);
-        
-        if (deathEffect != null)
+        if (GameManager.instance != null)
         {
-            deathEffect.Play();
+            GameManager.instance.OnGameStateChanged -= HandleGameStateChanged;
         }
+    }
 
-        if (gameManager != null)
+    private void HandleGameStateChanged(GameManager.GameState newState)
+    {
+        if (newState == GameManager.GameState.GameOver)
         {
-            gameManager.GameOver();
+            Die();
         }
     }
 }
